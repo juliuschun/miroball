@@ -1,0 +1,18 @@
+[Unit]
+Description=MiroBall — Swarm Intelligence Simulation Engine
+After=network.target
+
+[Service]
+Type=simple
+User=enterpriseai
+WorkingDirectory=/home/enterpriseai/workspace/projects/quant-finance/MiroFish/backend
+ExecStart=/home/enterpriseai/workspace/projects/quant-finance/MiroFish/backend/.venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+Environment=FLASK_DEBUG=False
+Environment=FLASK_PORT=5001
+Environment=FLASK_HOST=127.0.0.1
+Environment=LLM_MODEL_NAME=claude-haiku-4-20250514
+
+[Install]
+WantedBy=multi-user.target

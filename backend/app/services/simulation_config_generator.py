@@ -16,13 +16,12 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
-from openai import OpenAI
-
 from ..config import Config
+from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
-logger = get_logger('mirofish.simulation_config')
+logger = get_logger('miroball.simulation_config')
 
 # 中国作息时间配置（北京时间）
 CHINA_TIMEZONE_CONFIG = {
@@ -227,17 +226,8 @@ class SimulationConfigGenerator:
         base_url: Optional[str] = None,
         model_name: Optional[str] = None
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
         self.model_name = model_name or Config.LLM_MODEL_NAME
-        
-        if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
-        
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
+        self.llm = LLMClient(model=self.model_name)
     
     def generate_config(
         self,
@@ -369,7 +359,7 @@ class SimulationConfigGenerator:
             twitter_config=twitter_config,
             reddit_config=reddit_config,
             llm_model=self.model_name,
-            llm_base_url=self.base_url,
+            llm_base_url="anthropic-sdk-direct",
             generation_reasoning=" | ".join(reasoning_parts)
         )
         
@@ -439,24 +429,17 @@ class SimulationConfigGenerator:
         
         for attempt in range(max_attempts):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1)  # 每次重试降低温度
-                    # 不设置max_tokens，让LLM自由发挥
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
+                temp = 0.7 - (attempt * 0.1)  # 每次重试降低温度
+                content = self.llm.chat(
+                    messages=messages,
+                    temperature=temp,
+                    max_tokens=8192,
+                    response_format={"type": "json_object"}
                 )
-                
-                content = response.choices[0].message.content
-                finish_reason = response.choices[0].finish_reason
-                
-                # 检查是否被截断
-                if finish_reason == 'length':
-                    logger.warning(f"LLM输出被截断 (attempt {attempt+1})")
-                    content = self._fix_truncated_json(content)
                 
                 # 尝试解析JSON
                 try:

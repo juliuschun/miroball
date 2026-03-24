@@ -1,5 +1,5 @@
 """
-MiroFish Backend - Flask应用工厂
+MiroBall Backend - Flask应用工厂
 """
 
 import os
@@ -9,7 +9,7 @@ import warnings
 # 需要在所有其他导入之前设置
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 
 from .config import Config
@@ -27,7 +27,7 @@ def create_app(config_class=Config):
         app.json.ensure_ascii = False
     
     # 设置日志
-    logger = setup_logger('mirofish')
+    logger = setup_logger('miroball')
     
     # 只在 reloader 子进程中打印启动信息（避免 debug 模式下打印两次）
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
@@ -36,7 +36,7 @@ def create_app(config_class=Config):
     
     if should_log_startup:
         logger.info("=" * 50)
-        logger.info("MiroFish Backend 启动中...")
+        logger.info("MiroBall Backend 启动中...")
         logger.info("=" * 50)
     
     # 启用CORS
@@ -51,14 +51,14 @@ def create_app(config_class=Config):
     # 请求日志中间件
     @app.before_request
     def log_request():
-        logger = get_logger('mirofish.request')
+        logger = get_logger('miroball.request')
         logger.debug(f"请求: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
             logger.debug(f"请求体: {request.get_json(silent=True)}")
     
     @app.after_request
     def log_response(response):
-        logger = get_logger('mirofish.request')
+        logger = get_logger('miroball.request')
         logger.debug(f"响应: {response.status_code}")
         return response
     
@@ -71,10 +71,25 @@ def create_app(config_class=Config):
     # 健康检查
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroFish Backend'}
-    
+        return {'status': 'ok', 'service': 'MiroBall Backend'}
+
+    # 프론트엔드 정적 파일 서빙 (빌드된 Vue.js)
+    dist_dir = os.path.join(os.path.dirname(__file__), '../static/dist')
+
+    @app.route('/miroball/')
+    def serve_frontend():
+        return send_from_directory(dist_dir, 'index.html')
+
+    @app.route('/miroball/<path:path>')
+    def serve_frontend_assets(path):
+        full_path = os.path.join(dist_dir, path)
+        if os.path.isfile(full_path):
+            return send_from_directory(dist_dir, path)
+        # Vue Router의 HTML5 history mode — 모든 경로를 index.html로 폴백
+        return send_from_directory(dist_dir, 'index.html')
+
     if should_log_startup:
-        logger.info("MiroFish Backend 启动完成")
-    
+        logger.info("MiroBall Backend 启动完成")
+
     return app
 

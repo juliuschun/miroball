@@ -1,37 +1,28 @@
 """
 LLM客户端封装
-统一使用OpenAI格式调用
+Anthropic SDK 직접 호출 (Max subscription — API key 불필요)
 """
 
 import json
 import re
 from typing import Optional, Dict, Any, List
-from openai import OpenAI
+
+import anthropic
 
 from ..config import Config
 
 
 class LLMClient:
-    """LLM客户端"""
-    
+    """LLM客户端 — Anthropic SDK 직접 호출"""
+
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
         model: Optional[str] = None
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
         self.model = model or Config.LLM_MODEL_NAME
-        
-        if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
-        
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
-    
+        # Max subscription: API key 없이 SDK 직접 사용
+        self.client = anthropic.Anthropic()
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -39,51 +30,41 @@ class LLMClient:
         max_tokens: int = 4096,
         response_format: Optional[Dict] = None
     ) -> str:
-        """
-        发送聊天请求
-        
-        Args:
-            messages: 消息列表
-            temperature: 温度参数
-            max_tokens: 最大token数
-            response_format: 响应格式（如JSON模式）
-            
-        Returns:
-            模型响应文本
-        """
+        """发送聊天请求"""
+        # system 메시지 분리 (Anthropic API 형식)
+        system_msg = ""
+        user_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_msg = msg["content"]
+            else:
+                user_messages.append(msg)
+
+        # JSON 모드 요청 시 system prompt에 지시 추가
+        if response_format and response_format.get("type") == "json_object":
+            json_instruction = "\n\nYou must respond with valid JSON only. No markdown, no explanation — just the JSON object."
+            system_msg = (system_msg + json_instruction) if system_msg else json_instruction.strip()
+
         kwargs = {
             "model": self.model,
-            "messages": messages,
+            "messages": user_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        
-        if response_format:
-            kwargs["response_format"] = response_format
-        
-        response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content
-        # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
-        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+        if system_msg:
+            kwargs["system"] = system_msg
+
+        response = self.client.messages.create(**kwargs)
+        content = response.content[0].text
         return content
-    
+
     def chat_json(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 4096
     ) -> Dict[str, Any]:
-        """
-        发送聊天请求并返回JSON
-        
-        Args:
-            messages: 消息列表
-            temperature: 温度参数
-            max_tokens: 最大token数
-            
-        Returns:
-            解析后的JSON对象
-        """
+        """发送聊天请求并返回JSON"""
         response = self.chat(
             messages=messages,
             temperature=temperature,
@@ -100,4 +81,3 @@ class LLMClient:
             return json.loads(cleaned_response)
         except json.JSONDecodeError:
             raise ValueError(f"LLM返回的JSON格式无效: {cleaned_response}")
-
